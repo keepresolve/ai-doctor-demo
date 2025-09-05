@@ -1,5 +1,15 @@
 import { sql } from '@vercel/postgres'
 
+// 检查环境变量
+if (!process.env.POSTGRES_URL) {
+  console.error('POSTGRES_URL 环境变量未设置')
+  console.log('当前环境变量:', {
+    NODE_ENV: process.env.NODE_ENV,
+    DATABASE_URL: process.env.DATABASE_URL ? '已设置' : '未设置',
+    POSTGRES_URL: process.env.POSTGRES_URL ? '已设置' : '未设置'
+  })
+}
+
 // 用户管理
 export interface User {
   id: number
