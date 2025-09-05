@@ -10,27 +10,28 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@vercel/postgres": "^0.10.0",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
     "next": "^15.0.0",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
-    "bcryptjs": "^2.4.3",
-    "jsonwebtoken": "^9.0.2",
     "zod": "^3.22.4"
   },
   "devDependencies": {
-    "typescript": "^5",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.5",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
-    "@types/bcryptjs": "^2.4.6",
-    "@types/jsonwebtoken": "^9.0.5",
-    "tailwindcss": "^3.4.0",
-    "postcss": "^8.4.31",
+    "@types/sqlite3": "^3.1.11",
     "autoprefixer": "^10.4.16",
     "eslint": "^8",
     "eslint-config-next": "^15.0.0",
+    "postcss": "^8.4.31",
     "sqlite3": "^5.1.6",
-    "@types/sqlite3": "^3.1.11"
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5"
   },
   "optionalDependencies": {
     "sqlite3": "^5.1.6"

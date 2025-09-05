@@ -1,10 +1,36 @@
+// 数据库连接层 - 自动选择PostgreSQL或SQLite/Mock
 import { promisify } from 'util'
 import path from 'path'
 
+// 检测是否有PostgreSQL连接
+const hasPostgres = process.env.POSTGRES_URL || process.env.DATABASE_URL
 const isVercel = process.env.VERCEL || process.env.NODE_ENV === 'production'
 
+console.log('数据库连接检测:', { hasPostgres: !!hasPostgres, isVercel })
+
+// 用户管理
+export interface User {
+  id: number
+  phone: string
+  password_hash?: string
+  password?: string
+  name: string
+  role: 'admin' | 'doctor' | 'patient'
+  created_at: string
+}
+
+export interface DoctorProfile {
+  id: number
+  user_id: number
+  specialty: string
+  license_number: string
+  description: string
+  experience_years: number
+  created_at: string
+}
+
 let sqlite3: any
-if (!isVercel) {
+if (!isVercel && !hasPostgres) {
   try {
     sqlite3 = require('sqlite3')
   } catch (e) {
@@ -214,13 +240,182 @@ let database: Database
 
 export function getDatabase() {
   // 在 Vercel 环境中使用模拟数据库
-  if (isVercel) {
+  if (isVercel && !hasPostgres) {
     const { getDatabase: getMockDatabase } = require('./mock-database')
     return getMockDatabase()
   }
   
-  if (!database) {
+  if (!hasPostgres && !database) {
     database = new Database()
   }
   return database
+}
+
+// 统一的数据库函数接口
+export async function getUserByPhone(phone: string): Promise<User | null> {
+  if (hasPostgres) {
+    const { getUserByPhone: pgGetUserByPhone } = require('./postgres-database')
+    return await pgGetUserByPhone(phone)
+  } else {
+    const db = getDatabase()
+    return await db.get('SELECT * FROM users WHERE phone = ?', [phone])
+  }
+}
+
+export async function createUser(phone: string, passwordHash: string, name: string, role: string): Promise<User> {
+  if (hasPostgres) {
+    const { createUser: pgCreateUser } = require('./postgres-database')
+    return await pgCreateUser(phone, passwordHash, name, role)
+  } else {
+    const db = getDatabase()
+    const result = await db.run('INSERT INTO users (phone, password, name, role) VALUES (?, ?, ?, ?)', [phone, passwordHash, name, role])
+    return await db.get('SELECT * FROM users WHERE id = ?', [result.id])
+  }
+}
+
+export async function getUserById(id: number): Promise<User | null> {
+  if (hasPostgres) {
+    const { getUserById: pgGetUserById } = require('./postgres-database')
+    return await pgGetUserById(id)
+  } else {
+    const db = getDatabase()
+    return await db.get('SELECT * FROM users WHERE id = ?', [id])
+  }
+}
+
+export async function getAllUsers(): Promise<User[]> {
+  if (hasPostgres) {
+    const { getAllUsers: pgGetAllUsers } = require('./postgres-database')
+    return await pgGetAllUsers()
+  } else {
+    const db = getDatabase()
+    return await db.query('SELECT * FROM users ORDER BY created_at DESC')
+  }
+}
+
+export async function getUsersByRole(role: string): Promise<User[]> {
+  if (hasPostgres) {
+    const { getUsersByRole: pgGetUsersByRole } = require('./postgres-database')
+    return await pgGetUsersByRole(role)
+  } else {
+    const db = getDatabase()
+    return await db.query('SELECT * FROM users WHERE role = ? ORDER BY created_at DESC', [role])
+  }
+}
+
+export async function deleteUser(id: number): Promise<boolean> {
+  if (hasPostgres) {
+    const { deleteUser: pgDeleteUser } = require('./postgres-database')
+    return await pgDeleteUser(id)
+  } else {
+    const db = getDatabase()
+    try {
+      await db.run('DELETE FROM users WHERE id = ? AND role != "admin"', [id])
+      return true
+    } catch (error) {
+      console.error('删除用户失败:', error)
+      return false
+    }
+  }
+}
+
+export async function getDoctorProfile(userId: number): Promise<DoctorProfile | null> {
+  if (hasPostgres) {
+    const { getDoctorProfile: pgGetDoctorProfile } = require('./postgres-database')
+    return await pgGetDoctorProfile(userId)
+  } else {
+    const db = getDatabase()
+    return await db.get('SELECT * FROM doctor_profiles WHERE user_id = ?', [userId])
+  }
+}
+
+export async function createDoctorProfile(userId: number, specialty: string, licenseNumber: string, description?: string, experienceYears?: number): Promise<DoctorProfile> {
+  if (hasPostgres) {
+    const { createDoctorProfile: pgCreateDoctorProfile } = require('./postgres-database')
+    return await pgCreateDoctorProfile(userId, specialty, licenseNumber, description, experienceYears)
+  } else {
+    const db = getDatabase()
+    const result = await db.run('INSERT INTO doctor_profiles (user_id, specialty, license_number, description, experience_years) VALUES (?, ?, ?, ?, ?)', 
+      [userId, specialty, licenseNumber, description || '', experienceYears || 0])
+    return await db.get('SELECT * FROM doctor_profiles WHERE id = ?', [result.id])
+  }
+}
+
+export async function updateDoctorProfile(userId: number, data: Partial<DoctorProfile>): Promise<boolean> {
+  if (hasPostgres) {
+    const { updateDoctorProfile: pgUpdateDoctorProfile } = require('./postgres-database')
+    return await pgUpdateDoctorProfile(userId, data)
+  } else {
+    const db = getDatabase()
+    try {
+      const updates = []
+      const values = []
+      
+      if (data.specialty) {
+        updates.push('specialty = ?')
+        values.push(data.specialty)
+      }
+      if (data.description !== undefined) {
+        updates.push('description = ?')
+        values.push(data.description)
+      }
+      if (data.experience_years !== undefined) {
+        updates.push('experience_years = ?')
+        values.push(data.experience_years)
+      }
+      
+      if (updates.length === 0) return true
+      
+      values.push(userId)
+      await db.run(`UPDATE doctor_profiles SET ${updates.join(', ')} WHERE user_id = ?`, values)
+      return true
+    } catch (error) {
+      console.error('更新医生信息失败:', error)
+      return false
+    }
+  }
+}
+
+export async function getStats() {
+  if (hasPostgres) {
+    const { getStats: pgGetStats } = require('./postgres-database')
+    return await pgGetStats()
+  } else {
+    const db = getDatabase()
+    try {
+      const totalPatients = await db.get('SELECT COUNT(*) as count FROM users WHERE role = "patient"')
+      const totalDoctors = await db.get('SELECT COUNT(*) as count FROM users WHERE role = "doctor"')
+      const totalAppointments = await db.get('SELECT COUNT(*) as count FROM appointments')
+      const todayAppointments = await db.get('SELECT COUNT(*) as count FROM appointments WHERE appointment_date = DATE("now")')
+      
+      return {
+        totalPatients: totalPatients?.count || 0,
+        totalDoctors: totalDoctors?.count || 0,
+        totalAppointments: totalAppointments?.count || 0,
+        todayAppointments: todayAppointments?.count || 0,
+        appointmentsByStatus: { pending: 0, confirmed: 0, cancelled: 0, completed: 0 },
+        appointmentTrend: [],
+        doctorStats: []
+      }
+    } catch (error) {
+      console.error('获取统计数据失败:', error)
+      return {
+        totalPatients: 0,
+        totalDoctors: 0,
+        totalAppointments: 0,
+        todayAppointments: 0,
+        appointmentsByStatus: { pending: 0, confirmed: 0, cancelled: 0, completed: 0 },
+        appointmentTrend: [],
+        doctorStats: []
+      }
+    }
+  }
+}
+
+export async function initDatabase(): Promise<boolean> {
+  if (hasPostgres) {
+    const { initDatabase: pgInitDatabase } = require('./postgres-database')
+    return await pgInitDatabase()
+  }
+  return true
 }

@@ -4,7 +4,7 @@
 ## 使用框架
 - nextjs 基础框架 实现结构和前端页面
 ## 数据库
-- sqlite3
+- PostgreSQL
 ## 部署
 - 开发模式 可以直接启动
 - 生产 用vercel部署

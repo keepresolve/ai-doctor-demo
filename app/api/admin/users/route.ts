@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDatabase } from '@/app/lib/database'
+import { getAllUsers, getUsersByRole, getUserByPhone, createUser, createDoctorProfile, deleteUser } from '@/app/lib/database'
 import { verifyToken } from '@/app/lib/auth'
 import { hashPassword } from '@/app/lib/auth'
 import { ApiResponse } from '@/app/types'
@@ -28,34 +28,11 @@ async function handleGetUsers(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const role = searchParams.get('role')
 
-    const db = getDatabase()
-    let sql = 'SELECT id, phone, name, role, created_at FROM users WHERE 1=1'
-    const params: any[] = []
-
+    let users
     if (role) {
-      sql += ' AND role = ?'
-      params.push(role)
-    }
-
-    sql += ' ORDER BY created_at DESC'
-
-    const users = await db.query(sql, params)
-
-    // 获取扩展信息
-    for (let user of users) {
-      if (user.role === 'doctor') {
-        const profile = await db.get(
-          'SELECT * FROM doctor_profiles WHERE user_id = ?',
-          [user.id]
-        )
-        user.profile = profile
-      } else if (user.role === 'patient') {
-        const profile = await db.get(
-          'SELECT * FROM patient_profiles WHERE user_id = ?',
-          [user.id]
-        )
-        user.profile = profile
-      }
+      users = await getUsersByRole(role)
+    } else {
+      users = await getAllUsers()
     }
 
     return NextResponse.json<ApiResponse>({
@@ -120,13 +97,8 @@ async function handleCreateUser(request: NextRequest) {
       }, { status: 400 })
     }
 
-    const db = getDatabase()
-
     // 检查用户是否已存在
-    const existingUser = await db.get(
-      'SELECT id FROM users WHERE phone = ?',
-      [phone]
-    )
+    const existingUser = await getUserByPhone(phone)
 
     if (existingUser) {
       return NextResponse.json<ApiResponse>({
@@ -137,32 +109,81 @@ async function handleCreateUser(request: NextRequest) {
 
     // 创建用户
     const hashedPassword = await hashPassword(password)
-    const userResult = await db.run(
-      'INSERT INTO users (phone, password, name, role) VALUES (?, ?, ?, ?)',
-      [phone, hashedPassword, name, role]
-    )
+    const newUser = await createUser(phone, hashedPassword, name, role)
 
     // 创建角色相关信息
     if (role === 'doctor') {
-      await db.run(`
-        INSERT INTO doctor_profiles (user_id, specialty, license_number, description, experience_years)
-        VALUES (?, ?, ?, ?, ?)
-      `, [userResult.id, specialty, license_number, description || null, experience_years || 0])
-    } else if (role === 'patient') {
-      await db.run(`
-        INSERT INTO patient_profiles (user_id)
-        VALUES (?)
-      `, [userResult.id])
+      await createDoctorProfile(
+        newUser.id, 
+        specialty, 
+        license_number, 
+        description || '', 
+        experience_years || 0
+      )
     }
 
     return NextResponse.json<ApiResponse>({
       success: true,
       message: '用户创建成功',
-      data: { id: userResult.id }
+      data: { id: newUser.id }
     })
 
   } catch (error) {
     console.error('创建用户错误:', error)
+    return NextResponse.json<ApiResponse>({
+      success: false,
+      message: '服务器错误'
+    }, { status: 500 })
+  }
+}
+
+async function handleDeleteUser(request: NextRequest) {
+  // 认证检查
+  const authHeader = request.headers.get('authorization')
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return NextResponse.json<ApiResponse>({
+      success: false,
+      message: '未提供认证令牌'
+    }, { status: 401 })
+  }
+
+  const token = authHeader.substring(7)
+  const user = verifyToken(token)
+  
+  if (!user || user.role !== 'admin') {
+    return NextResponse.json<ApiResponse>({
+      success: false,
+      message: '权限不足'
+    }, { status: 403 })
+  }
+
+  try {
+    const body = await request.json()
+    const { userId } = body
+
+    if (!userId) {
+      return NextResponse.json<ApiResponse>({
+        success: false,
+        message: '用户ID不能为空'
+      }, { status: 400 })
+    }
+
+    const success = await deleteUser(userId)
+
+    if (success) {
+      return NextResponse.json<ApiResponse>({
+        success: true,
+        message: '用户删除成功'
+      })
+    } else {
+      return NextResponse.json<ApiResponse>({
+        success: false,
+        message: '用户删除失败'
+      }, { status: 400 })
+    }
+
+  } catch (error) {
+    console.error('删除用户错误:', error)
     return NextResponse.json<ApiResponse>({
       success: false,
       message: '服务器错误'
@@ -176,4 +197,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   return handleCreateUser(request)
+}
+
+export async function DELETE(request: NextRequest) {
+  return handleDeleteUser(request)
 }
