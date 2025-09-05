@@ -1,6 +1,7 @@
 import { sql } from '@vercel/postgres'
 
 // 检查环境变量
+
 if (!process.env.POSTGRES_URL) {
   console.error('POSTGRES_URL 环境变量未设置')
   console.log('当前环境变量:', {
