@@ -13,51 +13,73 @@
 
 ## 快速开始
 
-### 1. 在Vercel中添加PostgreSQL数据库
+### 1. 创建Neon数据库（推荐）
+
+1. 访问 [Neon Console](https://console.neon.tech)
+2. 使用GitHub账号登录
+3. 点击 `Create Project`
+4. 输入项目名称：`ai-doctor-demo`
+5. 选择区域（推荐 `US East (N. Virginia)`）
+6. 选择PostgreSQL版本（默认最新版本）
+7. 点击 `Create Project`
+
+**为什么选择Neon：**
+- ✅ 免费额度：3GB存储，100小时计算时间/月
+- ✅ 自动暂停和唤醒，节省成本
+- ✅ 分支功能，便于开发测试
+- ✅ 更好的性能和可靠性
+
+### 2. 获取数据库连接字符串
+
+创建完成后，在Neon Dashboard中：
+
+1. 点击项目名称进入项目详情
+2. 在 `Connection Details` 部分找到连接信息
+3. 复制 `Connection string`（类似这样）：
+   ```
+   postgresql://username:password@ep-xxx-xxx.us-east-1.aws.neon.tech/neondb?sslmode=require
+   ```
+
+### 3. 在Vercel中配置环境变量
 
 1. 登录 [Vercel Dashboard](https://vercel.com/dashboard)
 2. 进入你的项目 `doctor`
-3. 点击 `Storage` 标签页
-4. 点击 `Create Database`
-5. 选择 `Postgres`
-6. 输入数据库名称（如 `ai-doctor-db`）
-7. 选择区域（推荐 `US East`）
-8. 点击 `Create`
+3. 点击 `Settings` 标签页
+4. 点击 `Environment Variables`
+5. 添加环境变量：
+   - **Key**: `DATABASE_URL`
+   - **Value**: 你从Neon复制的连接字符串
+   - **Environment**: `Production`, `Preview`, `Development` 都勾选
+6. 点击 `Save`
 
-### 2. 配置环境变量
-
-数据库创建完成后，Vercel会自动添加以下环境变量到你的项目：
-```
-DATABASE_URL=postgres://...
-POSTGRES_URL=postgres://...
-POSTGRES_PRISMA_URL=postgres://...
-POSTGRES_URL_NO_SSL=postgres://...
-POSTGRES_URL_NON_POOLING=postgres://...
-POSTGRES_USER=...
-POSTGRES_HOST=...
-POSTGRES_PASSWORD=...
-POSTGRES_DATABASE=...
-```
-
-### 3. 运行数据库迁移
+### 4. 运行数据库迁移
 
 在本地运行迁移脚本来初始化数据库结构：
 
 ```bash
-# 设置环境变量（使用Vercel提供的DATABASE_URL）
-export DATABASE_URL="postgres://..."
+# 设置环境变量（使用从Neon复制的DATABASE_URL）
+export DATABASE_URL="postgresql://username:password@ep-xxx-xxx.us-east-1.aws.neon.tech/neondb?sslmode=require"
 
 # 运行迁移脚本
 node scripts/migrate-database.js
 ```
 
-### 4. 重新部署
+**迁移脚本会自动：**
+- 创建所有必要的数据表
+- 插入管理员测试账号
+- 添加示例医生和患者数据
+- 设置医生工作时间安排
 
-推送代码到GitHub，触发自动部署：
+### 5. 重新部署
+
+设置环境变量后，触发Vercel重新部署：
 
 ```bash
-git add .
-git commit -m "Enable PostgreSQL support"
+# 方法1：在Vercel Dashboard中手动触发重新部署
+# 进入项目 -> Deployments -> 点击右上角的 "Redeploy"
+
+# 方法2：推送一个小更新触发自动部署
+git commit --allow-empty -m "Trigger redeploy for Neon database"
 git push origin main
 ```
 
