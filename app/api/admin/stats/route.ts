@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
       totalDoctors: doctorsCount.count,
       totalAppointments: appointmentsCount.count,
       todayAppointments: todayAppointments.count,
-      appointmentsByStatus: appointmentsByStatus.reduce((acc: any, item) => {
+      appointmentsByStatus: appointmentsByStatus.reduce((acc: any, item: any) => {
         acc[item.status] = item.count
         return acc
       }, {}),
