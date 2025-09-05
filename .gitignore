@@ -49,3 +49,4 @@ backups/
 .mcp.json
 
 .next
+!next-env.d.ts
