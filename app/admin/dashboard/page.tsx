@@ -305,7 +305,7 @@ export default function AdminDashboard() {
               <div className="p-6">
                 <div className="flex items-center">
                   <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-primary-600 rounded-md flex items-center justify-center">
+                    <div className="w-8 h-8 bg-blue-600 rounded-md flex items-center justify-center">
                       <span className="text-white text-lg">👥</span>
                     </div>
                   </div>
@@ -345,24 +345,24 @@ export default function AdminDashboard() {
               </div>
             </Link>
 
-            {/* 预约管理 */}
+            {/* 系统统计 */}
             <Link
-              href="/admin/appointments"
+              href="/admin/stats"
               className="bg-white overflow-hidden shadow rounded-lg hover:shadow-md transition-shadow"
             >
               <div className="p-6">
                 <div className="flex items-center">
                   <div className="flex-shrink-0">
                     <div className="w-8 h-8 bg-purple-600 rounded-md flex items-center justify-center">
-                      <span className="text-white text-lg">📋</span>
+                      <span className="text-white text-lg">📊</span>
                     </div>
                   </div>
                   <div className="ml-4">
                     <h3 className="text-lg font-medium text-gray-900">
-                      预约管理
+                      系统统计
                     </h3>
                     <p className="text-sm text-gray-500">
-                      查看和管理所有预约
+                      查看详细统计数据
                     </p>
                   </div>
                 </div>

@@ -118,24 +118,24 @@ export default function DoctorDashboard() {
               </div>
             </Link>
 
-            {/* 诊疗记录 */}
+            {/* 个人资料 */}
             <Link
-              href="/doctor/records"
+              href="/doctor/profile"
               className="bg-white overflow-hidden shadow rounded-lg hover:shadow-md transition-shadow"
             >
               <div className="p-6">
                 <div className="flex items-center">
                   <div className="flex-shrink-0">
                     <div className="w-8 h-8 bg-purple-600 rounded-md flex items-center justify-center">
-                      <span className="text-white text-lg">📋</span>
+                      <span className="text-white text-lg">👤</span>
                     </div>
                   </div>
                   <div className="ml-4">
                     <h3 className="text-lg font-medium text-gray-900">
-                      诊疗记录
+                      个人资料
                     </h3>
                     <p className="text-sm text-gray-500">
-                      填写患者诊断和处方
+                      查看和编辑个人信息
                     </p>
                   </div>
                 </div>
