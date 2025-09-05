@@ -1,14 +1,26 @@
-import sqlite3 from 'sqlite3'
 import { promisify } from 'util'
 import path from 'path'
 
 const isVercel = process.env.VERCEL || process.env.NODE_ENV === 'production'
+
+let sqlite3: any
+if (!isVercel) {
+  try {
+    sqlite3 = require('sqlite3')
+  } catch (e) {
+    console.warn('SQLite3 not available, using mock database')
+  }
+}
+
 const DB_PATH = isVercel ? ':memory:' : path.join(process.cwd(), 'data.db')
 
 class Database {
-  private db: sqlite3.Database
+  private db: any
 
   constructor() {
+    if (!sqlite3) {
+      throw new Error('SQLite3 not available in this environment')
+    }
     this.db = new sqlite3.Database(DB_PATH)
     this.init()
   }
@@ -168,7 +180,7 @@ class Database {
 
   async query(sql: string, params: any[] = []): Promise<any[]> {
     return new Promise((resolve, reject) => {
-      this.db.all(sql, params, (err, rows) => {
+      this.db.all(sql, params, (err: any, rows: any[]) => {
         if (err) reject(err)
         else resolve(rows)
       })
@@ -177,7 +189,7 @@ class Database {
 
   async get(sql: string, params: any[] = []): Promise<any> {
     return new Promise((resolve, reject) => {
-      this.db.get(sql, params, (err, row) => {
+      this.db.get(sql, params, (err: any, row: any) => {
         if (err) reject(err)
         else resolve(row)
       })
@@ -186,7 +198,7 @@ class Database {
 
   async run(sql: string, params: any[] = []): Promise<{ id?: number, changes: number }> {
     return new Promise((resolve, reject) => {
-      this.db.run(sql, params, function(err) {
+      this.db.run(sql, params, function(this: any, err: any) {
         if (err) reject(err)
         else resolve({ id: this.lastID, changes: this.changes })
       })

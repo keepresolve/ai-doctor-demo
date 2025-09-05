@@ -1,12 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  serverExternalPackages: ['sqlite3'],
-  webpack: (config, { isServer }) => {
-    if (isServer) {
-      config.externals.push('sqlite3');
-    }
-    return config;
-  }
+  // 在 Vercel 环境中不需要 SQLite 配置
 }
 
 module.exports = nextConfig;
