@@ -118,19 +118,22 @@ async function insertSampleData(client) {
     }
 
     // 插入管理员用户 (密码: admin123)
+    const bcrypt = require('bcryptjs')
+    const adminPasswordHash = await bcrypt.hash('admin123', 12)
     const { rows: adminUser } = await client.query(`
       INSERT INTO users (phone, password_hash, name, role) 
       VALUES ($1, $2, $3, $4)
       RETURNING id
-    `, ['13800000001', '$2b$10$1g9z.qR6J6i7eXX6M.UO0e8yZ7QT.2qA6kI1L3nN4pV5uU9wW1uWy', '系统管理员', 'admin'])
+    `, ['13800000001', adminPasswordHash, '系统管理员', 'admin'])
     console.log('  ✓ 管理员用户 (13800000001 / admin123)')
 
     // 插入示例医生 (密码: doctor123)
+    const doctorPasswordHash = await bcrypt.hash('doctor123', 12)
     const { rows: doctorUser } = await client.query(`
       INSERT INTO users (phone, password_hash, name, role) 
       VALUES ($1, $2, $3, $4)
       RETURNING id
-    `, ['13800000002', '$2b$10$1g9z.qR6J6i7eXX6M.UO0e8yZ7QT.2qA6kI1L3nN4pV5uU9wW1uWy', '张医生', 'doctor'])
+    `, ['13800000002', doctorPasswordHash, '张医生', 'doctor'])
     
     // 插入医生详细信息
     await client.query(`
@@ -140,10 +143,11 @@ async function insertSampleData(client) {
     console.log('  ✓ 示例医生 (13800000002 / doctor123)')
 
     // 插入示例患者 (密码: patient123)
+    const patientPasswordHash = await bcrypt.hash('patient123', 12)
     await client.query(`
       INSERT INTO users (phone, password_hash, name, role) 
       VALUES ($1, $2, $3, $4)
-    `, ['13800000003', '$2b$10$1g9z.qR6J6i7eXX6M.UO0e8yZ7QT.2qA6kI1L3nN4pV5uU9wW1uWy', '患者李四', 'patient'])
+    `, ['13800000003', patientPasswordHash, '患者李四', 'patient'])
     console.log('  ✓ 示例患者 (13800000003 / patient123)')
 
     // 插入医生工作时间安排 (周一到周五, 9:00-17:00)

@@ -7,7 +7,7 @@ import FormInput from '@/app/components/FormInput'
 import { AuthResponse } from '@/app/types'
 
 export default function AdminLoginPage() {
-  const [phone, setPhone] = useState('13800138000')
+  const [phone, setPhone] = useState('13800000001')
   const [password, setPassword] = useState('admin123')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -87,7 +87,7 @@ export default function AdminLoginPage() {
 
           <div className="bg-blue-50 border border-blue-200 text-blue-600 px-4 py-3 rounded-md text-sm">
             <p>默认管理员账号:</p>
-            <p>手机号: 13800138000</p>
+            <p>手机号: 13800000001</p>
             <p>密码: admin123</p>
           </div>
 

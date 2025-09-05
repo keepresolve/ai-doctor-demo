@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDatabase } from '@/app/lib/database'
+import { getUserByPhone, createUser } from '@/app/lib/database'
 import { hashPassword, generateToken, validatePhone, validatePassword } from '@/app/lib/auth'
 import { AuthResponse, RegisterRequest } from '@/app/types'
 
@@ -36,13 +36,8 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    const db = getDatabase()
-
     // 检查用户是否已存在
-    const existingUser = await db.get(
-      'SELECT id FROM users WHERE phone = ?',
-      [phone]
-    )
+    const existingUser = await getUserByPhone(phone)
 
     if (existingUser) {
       return NextResponse.json<AuthResponse>({
@@ -53,32 +48,22 @@ export async function POST(request: NextRequest) {
 
     // 创建用户
     const hashedPassword = await hashPassword(password)
-    const userResult = await db.run(
-      'INSERT INTO users (phone, password, name, role) VALUES (?, ?, ?, ?)',
-      [phone, hashedPassword, name, 'patient']
-    )
-
-    // 创建患者扩展信息
-    await db.run(`
-      INSERT INTO patient_profiles (user_id, gender, birth_date, emergency_contact)
-      VALUES (?, ?, ?, ?)
-    `, [userResult.id, gender || null, birth_date || null, emergency_contact || null])
+    const user = await createUser(phone, hashedPassword, name, 'patient')
 
     const token = generateToken({
-      id: userResult.id!,
+      id: user.id,
       phone,
-      password: hashedPassword,
+      password_hash: hashedPassword,
       name,
       role: 'patient',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+      created_at: user.created_at
     })
 
     return NextResponse.json<AuthResponse>({
       success: true,
       message: '注册成功',
       user: {
-        id: userResult.id!,
+        id: user.id,
         phone,
         name,
         role: 'patient'

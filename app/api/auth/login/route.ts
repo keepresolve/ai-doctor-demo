@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDatabase } from '@/app/lib/database'
+import { getUserByPhone } from '@/app/lib/database'
 import { comparePassword, generateToken, validatePhone } from '@/app/lib/auth'
 import { AuthResponse, LoginRequest, User } from '@/app/types'
 
@@ -22,11 +22,7 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    const db = getDatabase()
-    const user = await db.get(
-      'SELECT * FROM users WHERE phone = ?',
-      [phone]
-    ) as User
+    const user = await getUserByPhone(phone)
 
     if (!user) {
       return NextResponse.json<AuthResponse>({
@@ -35,7 +31,7 @@ export async function POST(request: NextRequest) {
       }, { status: 404 })
     }
 
-    const isPasswordValid = await comparePassword(password, user.password)
+    const isPasswordValid = await comparePassword(password, user.password_hash)
     if (!isPasswordValid) {
       return NextResponse.json<AuthResponse>({
         success: false,

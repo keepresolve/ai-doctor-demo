@@ -3,11 +3,10 @@ export type UserRole = 'patient' | 'doctor' | 'admin'
 export interface User {
   id: number
   phone: string
-  password: string
+  password_hash: string
   name: string
   role: UserRole
   created_at: string
-  updated_at: string
 }
 
 export interface PatientProfile {
