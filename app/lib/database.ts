@@ -201,6 +201,12 @@ class Database {
 let database: Database
 
 export function getDatabase() {
+  // 在 Vercel 环境中使用模拟数据库
+  if (isVercel) {
+    const { getDatabase: getMockDatabase } = require('./mock-database')
+    return getMockDatabase()
+  }
+  
   if (!database) {
     database = new Database()
   }
