@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDatabase } from '@/app/lib/database'
+import { getAppointmentsWithDetails, createAppointment, checkAppointmentConflict } from '@/app/lib/database'
 import { verifyToken } from '@/app/lib/auth'
 import { ApiResponse } from '@/app/types'
 
@@ -24,33 +24,7 @@ async function handleGetAppointments(request: NextRequest) {
   }
 
   try {
-    const db = getDatabase()
-    let sql = `
-      SELECT 
-        a.*,
-        p.name as patient_name,
-        p.phone as patient_phone,
-        d.name as doctor_name,
-        dp.specialty as doctor_specialty
-      FROM appointments a
-      JOIN users p ON a.patient_id = p.id
-      JOIN users d ON a.doctor_id = d.id
-      LEFT JOIN doctor_profiles dp ON d.id = dp.user_id
-      WHERE 1=1
-    `
-    const params: any[] = []
-
-    if (user.role === 'patient') {
-      sql += ' AND a.patient_id = ?'
-      params.push(user.userId)
-    } else if (user.role === 'doctor') {
-      sql += ' AND a.doctor_id = ?'
-      params.push(user.userId)
-    }
-
-    sql += ' ORDER BY a.appointment_date DESC, a.appointment_time DESC'
-
-    const appointments = await db.query(sql, params)
+    const appointments = await getAppointmentsWithDetails(user.userId, user.role)
 
     return NextResponse.json<ApiResponse>({
       success: true,
@@ -98,43 +72,24 @@ async function handleCreateAppointment(request: NextRequest) {
       }, { status: 400 })
     }
 
-    const db = getDatabase()
+    // 检查时间冲突
+    const conflicts = await checkAppointmentConflict(doctor_id, user.userId, appointment_date, appointment_time)
 
-    // 检查医生是否存在且可用
-    const doctorSchedule = await db.get(`
-      SELECT id FROM doctor_schedules 
-      WHERE doctor_id = ? AND date = ? AND start_time = ? AND status = 'available'
-    `, [doctor_id, appointment_date, appointment_time])
-
-    if (!doctorSchedule) {
+    if (!conflicts.scheduleAvailable) {
       return NextResponse.json<ApiResponse>({
         success: false,
         message: '该时间段不可预约'
       }, { status: 400 })
     }
 
-    // 检查时间冲突
-    const conflict = await db.get(`
-      SELECT id FROM appointments 
-      WHERE doctor_id = ? AND appointment_date = ? AND appointment_time = ?
-      AND status != 'cancelled'
-    `, [doctor_id, appointment_date, appointment_time])
-
-    if (conflict) {
+    if (conflicts.doctorConflict) {
       return NextResponse.json<ApiResponse>({
         success: false,
         message: '该时间段已被预约'
       }, { status: 409 })
     }
 
-    // 检查患者是否有重复预约
-    const patientConflict = await db.get(`
-      SELECT id FROM appointments 
-      WHERE patient_id = ? AND appointment_date = ? AND appointment_time = ?
-      AND status != 'cancelled'
-    `, [user.userId, appointment_date, appointment_time])
-
-    if (patientConflict) {
+    if (conflicts.patientConflict) {
       return NextResponse.json<ApiResponse>({
         success: false,
         message: '您在该时间段已有预约'
@@ -142,16 +97,12 @@ async function handleCreateAppointment(request: NextRequest) {
     }
 
     // 创建预约
-    const result = await db.run(`
-      INSERT INTO appointments 
-      (patient_id, doctor_id, appointment_date, appointment_time, symptoms, status)
-      VALUES (?, ?, ?, ?, ?, 'pending')
-    `, [user.userId, doctor_id, appointment_date, appointment_time, symptoms || null])
+    const appointment = await createAppointment(user.userId, doctor_id, appointment_date, appointment_time, symptoms || '')
 
     return NextResponse.json<ApiResponse>({
       success: true,
       message: '预约创建成功',
-      data: { id: result.id }
+      data: appointment
     })
 
   } catch (error) {

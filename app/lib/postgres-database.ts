@@ -45,6 +45,17 @@ export interface Appointment {
   updated_at: string
 }
 
+export interface DoctorSchedule {
+  id: number
+  doctor_id: number
+  date: string
+  start_time: string
+  end_time: string
+  status: 'available' | 'busy' | 'break'
+  created_at: string
+  updated_at: string
+}
+
 // 用户操作
 export async function createUser(phone: string, passwordHash: string, name: string, role: string): Promise<User> {
   const { rows } = await sql`
@@ -186,6 +197,151 @@ export async function updateAppointmentStatus(id: number, status: string): Promi
   }
 }
 
+export async function getAppointmentById(id: number): Promise<any> {
+  const { rows } = await sql`
+    SELECT 
+      a.*,
+      p.name as patient_name,
+      p.phone as patient_phone,
+      d.name as doctor_name,
+      dp.specialty as doctor_specialty
+    FROM appointments a
+    JOIN users p ON a.patient_id = p.id
+    JOIN users d ON a.doctor_id = d.id
+    LEFT JOIN doctor_profiles dp ON d.id = dp.user_id
+    WHERE a.id = ${id}
+    LIMIT 1
+  `
+  return rows.length > 0 ? rows[0] : null
+}
+
+export async function getAppointmentsWithDetails(userId?: number, role?: string): Promise<any[]> {
+  let rows
+
+  if (role === 'patient' && userId) {
+    const result = await sql`
+      SELECT 
+        a.*,
+        p.name as patient_name,
+        p.phone as patient_phone,
+        d.name as doctor_name,
+        dp.specialty as doctor_specialty
+      FROM appointments a
+      JOIN users p ON a.patient_id = p.id
+      JOIN users d ON a.doctor_id = d.id
+      LEFT JOIN doctor_profiles dp ON d.id = dp.user_id
+      WHERE a.patient_id = ${userId}
+      ORDER BY a.appointment_date DESC, a.appointment_time DESC
+    `
+    rows = result.rows
+  } else if (role === 'doctor' && userId) {
+    const result = await sql`
+      SELECT 
+        a.*,
+        p.name as patient_name,
+        p.phone as patient_phone,
+        d.name as doctor_name,
+        dp.specialty as doctor_specialty
+      FROM appointments a
+      JOIN users p ON a.patient_id = p.id
+      JOIN users d ON a.doctor_id = d.id
+      LEFT JOIN doctor_profiles dp ON d.id = dp.user_id
+      WHERE a.doctor_id = ${userId}
+      ORDER BY a.appointment_date DESC, a.appointment_time DESC
+    `
+    rows = result.rows
+  } else {
+    const result = await sql`
+      SELECT 
+        a.*,
+        p.name as patient_name,
+        p.phone as patient_phone,
+        d.name as doctor_name,
+        dp.specialty as doctor_specialty
+      FROM appointments a
+      JOIN users p ON a.patient_id = p.id
+      JOIN users d ON a.doctor_id = d.id
+      LEFT JOIN doctor_profiles dp ON d.id = dp.user_id
+      ORDER BY a.appointment_date DESC, a.appointment_time DESC
+    `
+    rows = result.rows
+  }
+
+  return rows
+}
+
+export async function updateAppointmentDetails(id: number, data: any): Promise<boolean> {
+  try {
+    const updateFields = []
+    const updateValues = []
+    
+    if (data.status) {
+      updateFields.push(`status = $${updateValues.length + 1}`)
+      updateValues.push(data.status)
+    }
+    if (data.diagnosis !== undefined) {
+      updateFields.push(`diagnosis = $${updateValues.length + 1}`)
+      updateValues.push(data.diagnosis)
+    }
+    if (data.prescription !== undefined) {
+      updateFields.push(`prescription = $${updateValues.length + 1}`)
+      updateValues.push(data.prescription)
+    }
+    if (data.notes !== undefined) {
+      updateFields.push(`notes = $${updateValues.length + 1}`)
+      updateValues.push(data.notes)
+    }
+    
+    if (updateFields.length === 0) return true
+    
+    updateFields.push('updated_at = CURRENT_TIMESTAMP')
+    updateValues.push(id)
+    const query = `UPDATE appointments SET ${updateFields.join(', ')} WHERE id = $${updateValues.length}`
+    
+    await sql.query(query, updateValues)
+    return true
+  } catch (error) {
+    console.error('更新预约详情失败:', error)
+    return false
+  }
+}
+
+export async function checkAppointmentConflict(doctorId: number, patientId: number, date: string, time: string): Promise<{ doctorConflict?: boolean, patientConflict?: boolean, scheduleAvailable?: boolean }> {
+  try {
+    // 检查医生是否在该时间段有可用的时间表
+    const { rows: scheduleRows } = await sql`
+      SELECT id FROM doctor_schedules 
+      WHERE doctor_id = ${doctorId} AND date = ${date} 
+      AND start_time <= ${time} AND end_time > ${time} AND status = 'available'
+    `
+    
+    const scheduleAvailable = scheduleRows.length > 0
+
+    // 检查医生时间冲突
+    const { rows: doctorConflictRows } = await sql`
+      SELECT id FROM appointments 
+      WHERE doctor_id = ${doctorId} AND appointment_date = ${date} AND appointment_time = ${time}
+      AND status != 'cancelled'
+    `
+    
+    // 检查患者时间冲突
+    const { rows: patientConflictRows } = await sql`
+      SELECT id FROM appointments 
+      WHERE patient_id = ${patientId} AND appointment_date = ${date} AND appointment_time = ${time}
+      AND status != 'cancelled'
+    `
+    
+    return {
+      scheduleAvailable,
+      doctorConflict: doctorConflictRows.length > 0,
+      patientConflict: patientConflictRows.length > 0
+    }
+  } catch (error) {
+    console.error('检查预约冲突失败:', error)
+    return { doctorConflict: true, patientConflict: true, scheduleAvailable: false }
+  }
+}
+
 // 统计数据
 export async function getStats() {
   try {
@@ -249,6 +405,110 @@ export async function getStats() {
       appointmentTrend: [],
       doctorStats: []
     }
+  }
+}
+
+// 医生日程操作
+export async function createDoctorSchedule(doctorId: number, date: string, startTime: string, endTime: string, status?: string): Promise<DoctorSchedule> {
+  const { rows } = await sql`
+    INSERT INTO doctor_schedules (doctor_id, date, start_time, end_time, status) 
+    VALUES (${doctorId}, ${date}, ${startTime}, ${endTime}, ${status || 'available'})
+    RETURNING *
+  `
+  return rows[0] as DoctorSchedule
+}
+
+export async function getDoctorSchedulesByDoctorId(doctorId: number, date?: string, month?: string): Promise<DoctorSchedule[]> {
+  let rows
+  
+  if (date) {
+    const result = await sql`SELECT * FROM doctor_schedules WHERE doctor_id = ${doctorId} AND date = ${date} ORDER BY date, start_time`
+    rows = result.rows
+  } else if (month) {
+    const result = await sql`SELECT * FROM doctor_schedules WHERE doctor_id = ${doctorId} AND DATE_TRUNC('month', date::date) = DATE_TRUNC('month', ${month}::date) ORDER BY date, start_time`
+    rows = result.rows
+  } else {
+    const result = await sql`SELECT * FROM doctor_schedules WHERE doctor_id = ${doctorId} ORDER BY date, start_time`
+    rows = result.rows
+  }
+  
+  return rows as DoctorSchedule[]
+}
+
+export async function updateDoctorSchedule(id: number, data: Partial<DoctorSchedule>): Promise<boolean> {
+  try {
+    const updateFields = []
+    const updateValues = []
+    
+    if (data.date) {
+      updateFields.push(`date = $${updateValues.length + 1}`)
+      updateValues.push(data.date)
+    }
+    if (data.start_time) {
+      updateFields.push(`start_time = $${updateValues.length + 1}`)
+      updateValues.push(data.start_time)
+    }
+    if (data.end_time) {
+      updateFields.push(`end_time = $${updateValues.length + 1}`)
+      updateValues.push(data.end_time)
+    }
+    if (data.status) {
+      updateFields.push(`status = $${updateValues.length + 1}`)
+      updateValues.push(data.status)
+    }
+    
+    if (updateFields.length === 0) return true
+    
+    updateValues.push(id)
+    const query = `UPDATE doctor_schedules SET ${updateFields.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = $${updateValues.length}`
+    
+    await sql.query(query, updateValues)
+    return true
+  } catch (error) {
+    console.error('更新医生日程失败:', error)
+    return false
+  }
+}
+
+export async function deleteDoctorSchedule(id: number, doctorId: number): Promise<boolean> {
+  try {
+    await sql`DELETE FROM doctor_schedules WHERE id = ${id} AND doctor_id = ${doctorId}`
+    return true
+  } catch (error) {
+    console.error('删除医生日程失败:', error)
+    return false
+  }
+}
+
+export async function checkScheduleConflict(doctorId: number, date: string, startTime: string, endTime: string, excludeId?: number): Promise<boolean> {
+  try {
+    let query = sql`
+      SELECT id FROM doctor_schedules 
+      WHERE doctor_id = ${doctorId} AND date = ${date} 
+      AND (
+        (start_time <= ${startTime} AND end_time > ${startTime}) OR
+        (start_time < ${endTime} AND end_time >= ${endTime}) OR
+        (start_time >= ${startTime} AND end_time <= ${endTime})
+      )
+    `
+    
+    if (excludeId) {
+      query = sql`
+        SELECT id FROM doctor_schedules 
+        WHERE doctor_id = ${doctorId} AND date = ${date} AND id != ${excludeId}
+        AND (
+          (start_time <= ${startTime} AND end_time > ${startTime}) OR
+          (start_time < ${endTime} AND end_time >= ${endTime}) OR
+          (start_time >= ${startTime} AND end_time <= ${endTime})
+        )
+      `
+    }
+    
+    const { rows } = await query
+    return rows.length > 0
+  } catch (error) {
+    console.error('检查时间冲突失败:', error)
+    return true // 出错时假设有冲突，更安全
   }
 }
 

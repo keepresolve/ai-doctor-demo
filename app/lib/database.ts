@@ -55,6 +55,17 @@ export const updateAppointmentStatus = postgres.updateAppointmentStatus
 export const getStats = postgres.getStats
 export const initDatabase = postgres.initDatabase
 
+export const createDoctorSchedule = postgres.createDoctorSchedule
+export const getDoctorSchedulesByDoctorId = postgres.getDoctorSchedulesByDoctorId
+export const updateDoctorSchedule = postgres.updateDoctorSchedule
+export const deleteDoctorSchedule = postgres.deleteDoctorSchedule
+export const checkScheduleConflict = postgres.checkScheduleConflict
+
+export const getAppointmentById = postgres.getAppointmentById
+export const getAppointmentsWithDetails = postgres.getAppointmentsWithDetails
+export const updateAppointmentDetails = postgres.updateAppointmentDetails
+export const checkAppointmentConflict = postgres.checkAppointmentConflict
+
 // 检查数据库连接
 console.log('数据库连接: 使用PostgreSQL (Neon)')
 

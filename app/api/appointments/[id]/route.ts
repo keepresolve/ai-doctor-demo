@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDatabase } from '@/app/lib/database'
+import { getAppointmentById, updateAppointmentDetails } from '@/app/lib/database'
 import { verifyToken } from '@/app/lib/auth'
 import { ApiResponse } from '@/app/types'
 
@@ -26,14 +26,10 @@ async function handleUpdateAppointment(request: NextRequest, { params }: { param
   try {
     const body = await request.json()
     const { status, diagnosis, prescription, notes } = body
-    const appointmentId = params.id
-
-    const db = getDatabase()
+    const appointmentId = parseInt(params.id)
 
     // 获取现有预约信息
-    const appointment = await db.get(`
-      SELECT * FROM appointments WHERE id = ?
-    `, [appointmentId])
+    const appointment = await getAppointmentById(appointmentId)
 
     if (!appointment) {
       return NextResponse.json<ApiResponse>({
@@ -57,45 +53,28 @@ async function handleUpdateAppointment(request: NextRequest, { params }: { param
       }, { status: 403 })
     }
 
-    // 更新预约
-    let updateFields: string[] = []
-    let updateParams: any[] = []
+    // 准备更新数据
+    const updateData: any = {}
+    if (status) updateData.status = status
+    if (diagnosis !== undefined) updateData.diagnosis = diagnosis
+    if (prescription !== undefined) updateData.prescription = prescription
+    if (notes !== undefined) updateData.notes = notes
 
-    if (status) {
-      updateFields.push('status = ?')
-      updateParams.push(status)
-    }
-
-    if (diagnosis !== undefined) {
-      updateFields.push('diagnosis = ?')
-      updateParams.push(diagnosis)
-    }
-
-    if (prescription !== undefined) {
-      updateFields.push('prescription = ?')
-      updateParams.push(prescription)
-    }
-
-    if (notes !== undefined) {
-      updateFields.push('notes = ?')
-      updateParams.push(notes)
-    }
-
-    if (updateFields.length === 0) {
+    if (Object.keys(updateData).length === 0) {
       return NextResponse.json<ApiResponse>({
         success: false,
         message: '没有需要更新的字段'
       }, { status: 400 })
     }
 
-    updateFields.push('updated_at = CURRENT_TIMESTAMP')
-    updateParams.push(appointmentId)
+    const success = await updateAppointmentDetails(appointmentId, updateData)
 
-    await db.run(`
-      UPDATE appointments 
-      SET ${updateFields.join(', ')}
-      WHERE id = ?
-    `, updateParams)
+    if (!success) {
+      return NextResponse.json<ApiResponse>({
+        success: false,
+        message: '更新失败'
+      }, { status: 500 })
+    }
 
     return NextResponse.json<ApiResponse>({
       success: true,
@@ -132,22 +111,9 @@ async function handleGetAppointment(request: NextRequest, { params }: { params: 
   }
 
   try {
-    const appointmentId = params.id
-    const db = getDatabase()
+    const appointmentId = parseInt(params.id)
 
-    const appointment = await db.get(`
-      SELECT 
-        a.*,
-        p.name as patient_name,
-        p.phone as patient_phone,
-        d.name as doctor_name,
-        dp.specialty as doctor_specialty
-      FROM appointments a
-      JOIN users p ON a.patient_id = p.id
-      JOIN users d ON a.doctor_id = d.id
-      LEFT JOIN doctor_profiles dp ON d.id = dp.user_id
-      WHERE a.id = ?
-    `, [appointmentId])
+    const appointment = await getAppointmentById(appointmentId)
 
     if (!appointment) {
       return NextResponse.json<ApiResponse>({
@@ -207,13 +173,10 @@ async function handleDeleteAppointment(request: NextRequest, { params }: { param
   }
 
   try {
-    const appointmentId = params.id
-    const db = getDatabase()
+    const appointmentId = parseInt(params.id)
 
     // 获取预约信息
-    const appointment = await db.get(`
-      SELECT * FROM appointments WHERE id = ?
-    `, [appointmentId])
+    const appointment = await getAppointmentById(appointmentId)
 
     if (!appointment) {
       return NextResponse.json<ApiResponse>({
@@ -245,11 +208,14 @@ async function handleDeleteAppointment(request: NextRequest, { params }: { param
     }
 
     // 更新为取消状态而不是删除
-    await db.run(`
-      UPDATE appointments 
-      SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `, [appointmentId])
+    const success = await updateAppointmentDetails(appointmentId, { status: 'cancelled' })
+
+    if (!success) {
+      return NextResponse.json<ApiResponse>({
+        success: false,
+        message: '取消失败'
+      }, { status: 500 })
+    }
 
     return NextResponse.json<ApiResponse>({
       success: true,

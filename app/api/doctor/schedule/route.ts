@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDatabase } from '@/app/lib/database'
+import { getDoctorSchedulesByDoctorId, createDoctorSchedule, checkScheduleConflict } from '@/app/lib/database'
 import { verifyToken } from '@/app/lib/auth'
 import { ApiResponse } from '@/app/types'
 
@@ -28,21 +28,7 @@ async function handleGetSchedule(request: NextRequest) {
   const month = searchParams.get('month')
 
   try {
-    const db = getDatabase()
-    let sql = 'SELECT * FROM doctor_schedules WHERE doctor_id = ?'
-    const params: any[] = [user.userId]
-
-    if (date) {
-      sql += ' AND date = ?'
-      params.push(date)
-    } else if (month) {
-      sql += ' AND strftime("%Y-%m", date) = ?'
-      params.push(month)
-    }
-
-    sql += ' ORDER BY date, start_time'
-
-    const schedules = await db.query(sql, params)
+    const schedules = await getDoctorSchedulesByDoctorId(user.userId, date || undefined, month || undefined)
 
     return NextResponse.json<ApiResponse>({
       success: true,
@@ -90,35 +76,22 @@ async function handleCreateSchedule(request: NextRequest) {
       }, { status: 400 })
     }
 
-    const db = getDatabase()
-    
     // 检查时间冲突
-    const conflict = await db.get(`
-      SELECT id FROM doctor_schedules 
-      WHERE doctor_id = ? AND date = ? 
-      AND (
-        (start_time <= ? AND end_time > ?) OR
-        (start_time < ? AND end_time >= ?) OR
-        (start_time >= ? AND end_time <= ?)
-      )
-    `, [user.userId, date, start_time, start_time, end_time, end_time, start_time, end_time])
+    const hasConflict = await checkScheduleConflict(user.userId, date, start_time, end_time)
 
-    if (conflict) {
+    if (hasConflict) {
       return NextResponse.json<ApiResponse>({
         success: false,
         message: '时间段冲突'
       }, { status: 409 })
     }
 
-    const result = await db.run(`
-      INSERT INTO doctor_schedules (doctor_id, date, start_time, end_time, status)
-      VALUES (?, ?, ?, ?, ?)
-    `, [user.userId, date, start_time, end_time, status || 'available'])
+    const schedule = await createDoctorSchedule(user.userId, date, start_time, end_time, status || 'available')
 
     return NextResponse.json<ApiResponse>({
       success: true,
       message: '创建成功',
-      data: { id: result.id }
+      data: schedule
     })
 
   } catch (error) {
