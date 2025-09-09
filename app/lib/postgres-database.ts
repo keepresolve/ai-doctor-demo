@@ -56,6 +56,21 @@ export interface DoctorSchedule {
   updated_at: string
 }
 
+export interface DoctorAutoScheduleConfig {
+  id: number
+  doctor_id: number
+  enabled: boolean
+  work_days: number[] // 1=周一, 7=周日
+  work_start_time: string
+  work_end_time: string
+  slot_duration: number // 分钟
+  break_start_time: string
+  break_end_time: string
+  advance_days: number
+  created_at: string
+  updated_at: string
+}
+
 // 用户操作
 export async function createUser(phone: string, passwordHash: string, name: string, role: string): Promise<User> {
   const { rows } = await sql`
@@ -510,6 +525,172 @@ export async function checkScheduleConflict(doctorId: number, date: string, star
     console.error('检查时间冲突失败:', error)
     return true // 出错时假设有冲突，更安全
   }
+}
+
+// 医生自动日程配置操作
+export async function getDoctorAutoScheduleConfig(doctorId: number): Promise<DoctorAutoScheduleConfig | null> {
+  const { rows } = await sql`
+    SELECT * FROM doctor_auto_schedule_configs WHERE doctor_id = ${doctorId} LIMIT 1
+  `
+  return rows.length > 0 ? rows[0] as DoctorAutoScheduleConfig : null
+}
+
+export async function createDoctorAutoScheduleConfig(doctorId: number, config: Partial<DoctorAutoScheduleConfig>): Promise<DoctorAutoScheduleConfig> {
+  const workDays = JSON.stringify(config.work_days || [1,2,3,4,5])
+  const query = `
+    INSERT INTO doctor_auto_schedule_configs 
+    (doctor_id, enabled, work_days, work_start_time, work_end_time, slot_duration, break_start_time, break_end_time, advance_days)
+    VALUES ($1, $2, $3::integer[], $4, $5, $6, $7, $8, $9)
+    RETURNING *
+  `
+  
+  const { rows } = await sql.query(query, [
+    doctorId,
+    config.enabled || false,
+    workDays,
+    config.work_start_time || '09:00',
+    config.work_end_time || '17:00',
+    config.slot_duration || 30,
+    config.break_start_time || '12:00',
+    config.break_end_time || '13:00',
+    config.advance_days || 30
+  ])
+  
+  return rows[0] as DoctorAutoScheduleConfig
+}
+
+export async function updateDoctorAutoScheduleConfig(doctorId: number, config: Partial<DoctorAutoScheduleConfig>): Promise<boolean> {
+  try {
+    const updateFields = []
+    const updateValues = []
+    
+    if (config.enabled !== undefined) {
+      updateFields.push(`enabled = $${updateValues.length + 1}`)
+      updateValues.push(config.enabled)
+    }
+    if (config.work_days) {
+      updateFields.push(`work_days = $${updateValues.length + 1}::integer[]`)
+      updateValues.push(JSON.stringify(config.work_days))
+    }
+    if (config.work_start_time) {
+      updateFields.push(`work_start_time = $${updateValues.length + 1}`)
+      updateValues.push(config.work_start_time)
+    }
+    if (config.work_end_time) {
+      updateFields.push(`work_end_time = $${updateValues.length + 1}`)
+      updateValues.push(config.work_end_time)
+    }
+    if (config.slot_duration) {
+      updateFields.push(`slot_duration = $${updateValues.length + 1}`)
+      updateValues.push(config.slot_duration)
+    }
+    if (config.break_start_time) {
+      updateFields.push(`break_start_time = $${updateValues.length + 1}`)
+      updateValues.push(config.break_start_time)
+    }
+    if (config.break_end_time) {
+      updateFields.push(`break_end_time = $${updateValues.length + 1}`)
+      updateValues.push(config.break_end_time)
+    }
+    if (config.advance_days) {
+      updateFields.push(`advance_days = $${updateValues.length + 1}`)
+      updateValues.push(config.advance_days)
+    }
+    
+    if (updateFields.length === 0) return true
+    
+    updateFields.push('updated_at = CURRENT_TIMESTAMP')
+    updateValues.push(doctorId)
+    const query = `UPDATE doctor_auto_schedule_configs SET ${updateFields.join(', ')} WHERE doctor_id = $${updateValues.length}`
+    
+    await sql.query(query, updateValues)
+    return true
+  } catch (error) {
+    console.error('更新医生自动日程配置失败:', error)
+    return false
+  }
+}
+
+export async function getEnabledAutoScheduleConfigs(): Promise<DoctorAutoScheduleConfig[]> {
+  const { rows } = await sql`
+    SELECT * FROM doctor_auto_schedule_configs WHERE enabled = true
+  `
+  return rows as DoctorAutoScheduleConfig[]
+}
+
+// 自动创建日程的核心函数
+export async function generateAutoSchedules(config: DoctorAutoScheduleConfig, targetDate: Date): Promise<number> {
+  try {
+    const dayOfWeek = targetDate.getDay() || 7 // 将周日从0转为7
+    
+    // 检查是否为工作日
+    if (!config.work_days.includes(dayOfWeek)) {
+      return 0 // 非工作日，跳过
+    }
+
+    const dateStr = targetDate.toISOString().split('T')[0]
+    
+    // 检查该日期是否已有日程
+    const { rows: existingSchedules } = await sql`
+      SELECT COUNT(*) as count FROM doctor_schedules 
+      WHERE doctor_id = ${config.doctor_id} AND date = ${dateStr}
+    `
+    
+    if (parseInt(existingSchedules[0].count) > 0) {
+      return 0 // 已有日程，跳过
+    }
+
+    // 生成时间段
+    const schedules = []
+    const workStart = parseTime(config.work_start_time)
+    const workEnd = parseTime(config.work_end_time)
+    const breakStart = parseTime(config.break_start_time)
+    const breakEnd = parseTime(config.break_end_time)
+    
+    let currentTime = workStart
+    while (currentTime + config.slot_duration <= workEnd) {
+      // 跳过休息时间
+      if (!(currentTime >= breakStart && currentTime < breakEnd)) {
+        const startTime = formatMinutesToTime(currentTime)
+        const endTime = formatMinutesToTime(currentTime + config.slot_duration)
+        
+        schedules.push({
+          doctor_id: config.doctor_id,
+          date: dateStr,
+          start_time: startTime,
+          end_time: endTime,
+          status: 'available'
+        })
+      }
+      currentTime += config.slot_duration
+    }
+
+    // 批量插入日程
+    for (const schedule of schedules) {
+      await sql`
+        INSERT INTO doctor_schedules (doctor_id, date, start_time, end_time, status)
+        VALUES (${schedule.doctor_id}, ${schedule.date}, ${schedule.start_time}, ${schedule.end_time}, ${schedule.status})
+      `
+    }
+
+    return schedules.length
+  } catch (error) {
+    console.error('生成自动日程失败:', error)
+    return 0
+  }
+}
+
+// 辅助函数：将时间字符串转换为分钟数
+function parseTime(timeStr: string): number {
+  const [hours, minutes] = timeStr.split(':').map(Number)
+  return hours * 60 + minutes
+}
+
+// 辅助函数：将分钟数转换为时间字符串
+function formatMinutesToTime(minutes: number): string {
+  const hours = Math.floor(minutes / 60)
+  const mins = minutes % 60
+  return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`
 }
 
 // 数据库初始化检查

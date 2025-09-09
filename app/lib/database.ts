@@ -66,6 +66,12 @@ export const getAppointmentsWithDetails = postgres.getAppointmentsWithDetails
 export const updateAppointmentDetails = postgres.updateAppointmentDetails
 export const checkAppointmentConflict = postgres.checkAppointmentConflict
 
+export const getDoctorAutoScheduleConfig = postgres.getDoctorAutoScheduleConfig
+export const createDoctorAutoScheduleConfig = postgres.createDoctorAutoScheduleConfig
+export const updateDoctorAutoScheduleConfig = postgres.updateDoctorAutoScheduleConfig
+export const getEnabledAutoScheduleConfigs = postgres.getEnabledAutoScheduleConfigs
+export const generateAutoSchedules = postgres.generateAutoSchedules
+
 // 检查数据库连接
 console.log('数据库连接: 使用PostgreSQL (Neon)')
 
